@@ -1,7 +1,6 @@
 """
-UPI LOG ANALYZER - STREAMLIT DASHBOARD
-Real-Time Fraud Detection System
-Date: 02-01-2026
+UPI LOG ANALYZER — Rewritten
+Clean, modern, professional Streamlit dashboard
 """
 
 import streamlit as st
@@ -9,919 +8,681 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import random
-try:
-    from ydata_profiling import ProfileReport
-    PROFILING_AVAILABLE = True
-except Exception as e:
-    PROFILING_AVAILABLE = False
-
-import streamlit.components.v1 as components
-import base64
-from io import BytesIO
 import warnings
 warnings.filterwarnings('ignore')
 
-# Page Configuration
+# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="UPI Log Analyzer Dashboard",
-    page_icon="🔒",
+    page_title="UPI Log Analyzer",
+    page_icon="🔐",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# ── Theme & CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
-    <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-    }
-    .alert-critical {
-        background-color: #ffebee;
-        border-left: 4px solid #f44336;
-        padding: 1rem;
-        border-radius: 0.5rem;
-    }
-    .alert-warning {
-        background-color: #fff3e0;
-        border-left: 4px solid #ff9800;
-        padding: 1rem;
-        border-radius: 0.5rem;
-    }
-    .alert-success {
-        background-color: #e8f5e9;
-        border-left: 4px solid #4caf50;
-        padding: 1rem;
-        border-radius: 0.5rem;
-    }
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+/* Hide default Streamlit elements */
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding: 1.5rem 2rem; max-width: 1400px; }
+
+/* Color variables via root-level CSS */
+:root {
+    --bg:        #0a0e1a;
+    --surface:   #111827;
+    --surface2:  #1a2235;
+    --border:    #1e2d45;
+    --accent:    #3b82f6;
+    --accent2:   #06b6d4;
+    --danger:    #ef4444;
+    --warning:   #f59e0b;
+    --success:   #10b981;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+}
+
+/* KPI Cards */
+.kpi {
+    background: #111827;
+    border: 1px solid #1e2d45;
+    border-radius: 10px;
+    padding: 20px 22px;
+    border-top: 3px solid;
+    margin-bottom: 6px;
+}
+.kpi-val  { font-family:'IBM Plex Mono',monospace; font-size:2rem; font-weight:600; margin:0; }
+.kpi-lbl  { font-size:0.78rem; color:#64748b; text-transform:uppercase; letter-spacing:.08em; margin:0; }
+
+/* Alert cards */
+.alert {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 6px 0;
+    border-left: 3px solid;
+    font-size: 0.9rem;
+}
+.alert-critical { background:#1f0f0f; border-color:#ef4444; color:#fca5a5; }
+.alert-warning  { background:#1f1700; border-color:#f59e0b; color:#fcd34d; }
+.alert-ok       { background:#0f1f14; border-color:#10b981; color:#6ee7b7; }
+
+/* Section headers */
+.sec-title {
+    font-size:0.75rem; font-weight:600; text-transform:uppercase;
+    letter-spacing:.12em; color:#64748b;
+    border-bottom:1px solid #1e2d45; padding-bottom:8px; margin-bottom:16px;
+}
+
+/* Anomaly items */
+.anomaly-item {
+    background:#111827; border:1px solid #1e2d45; border-radius:8px;
+    padding:12px 16px; margin:6px 0;
+    display:flex; justify-content:space-between; align-items:center;
+}
+.badge {
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem;
+    padding:3px 8px; border-radius:4px; font-weight:600;
+}
+.badge-red    { background:#1f0f0f; color:#ef4444; border:1px solid #ef4444; }
+.badge-yellow { background:#1f1700; color:#f59e0b; border:1px solid #f59e0b; }
+.badge-green  { background:#0f1f14; color:#10b981; border:1px solid #10b981; }
+</style>
 """, unsafe_allow_html=True)
 
-# ============================================================================
-# HELPER FUNCTIONS FOR DATA GENERATION
-# ============================================================================
+# ── Chart defaults ─────────────────────────────────────────────────────────────
+CHART_DEFAULTS = dict(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font_color='#94a3b8',
+    font_family='IBM Plex Sans',
+    margin=dict(t=30, b=20, l=10, r=10),
+)
+GRID = dict(gridcolor='#1e2d45', zerolinecolor='#1e2d45')
 
-def generate_timestamps(n, base_date, hours_range=24):
-    """Generate random timestamps"""
-    timestamps = []
-    for i in range(n):
-        random_seconds = random.randint(0, hours_range * 3600)
-        timestamp = base_date + timedelta(seconds=random_seconds)
-        timestamps.append(timestamp.strftime('%Y-%m-%d %H:%M:%S'))
-    return timestamps
+# ── Data generation ────────────────────────────────────────────────────────────
+def _ts(n, base, hours=24):
+    out = []
+    for _ in range(n):
+        out.append((base + timedelta(seconds=random.randint(0, hours * 3600)))
+                   .strftime('%Y-%m-%d %H:%M:%S'))
+    return out
 
-def generate_ip():
-    """Generate random IP address"""
-    return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 255)}"
+def _ip():
+    return f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,255)}"
 
-@st.cache_data
-def generate_synthetic_data():
-    """Generate all 5 synthetic CSV files"""
-    
-    np.random.seed(42)
-    random.seed(42)
-    
-    base_date = datetime(2026, 2, 1, 0, 0, 0)
-    
-    # User pools
-    user_ids = [f"USR{str(i).zfill(4)}" for i in range(1, 301)]
-    suspicious_users = [f"SUS{str(i).zfill(4)}" for i in range(1, 51)]
-    
-    # IP pools
-    normal_ips = [generate_ip() for _ in range(200)]
-    suspicious_ips = [generate_ip() for _ in range(30)]
-    
-    # FILE 1: User Login Logs
-    login_data = {
-        'timestamp': generate_timestamps(500, base_date),
-        'user_id': [],
-        'ip_address': [],
-        'login_status': [],
-        'browser': []
-    }
-    
-    browsers = ['Chrome', 'Firefox', 'Safari', 'Edge', 'Opera', 'Mobile_App']
-    
-    for i in range(500):
-        if random.random() < 0.85:
-            login_data['user_id'].append(random.choice(user_ids))
-            login_data['ip_address'].append(random.choice(normal_ips))
-            login_data['login_status'].append(np.random.choice(['success', 'failed'], p=[0.95, 0.05]))
-        else:
-            login_data['user_id'].append(random.choice(suspicious_users))
-            login_data['ip_address'].append(random.choice(suspicious_ips))
-            login_data['login_status'].append(np.random.choice(['success', 'failed'], p=[0.3, 0.7]))
-        
-        login_data['browser'].append(random.choice(browsers))
-    
-    df1_login = pd.DataFrame(login_data).sort_values('timestamp').reset_index(drop=True)
-    
-    # FILE 2: Session Duration Logs
-    session_data = {
-        'session_id': [f"SES{str(i).zfill(5)}" for i in range(1, 501)],
-        'user_id': [],
-        'start_time': [],
-        'end_time': [],
-        'duration_minutes': []
-    }
-    
-    for i in range(500):
-        start = base_date + timedelta(seconds=random.randint(0, 24*3600))
-        
-        if random.random() < 0.80:
-            duration_min = random.randint(5, 60)
-            session_data['user_id'].append(random.choice(user_ids))
-        else:
-            if random.random() < 0.5:
-                duration_min = random.randint(1, 3)
-            else:
-                duration_min = random.randint(180, 480)
-            session_data['user_id'].append(random.choice(suspicious_users))
-        
-        end = start + timedelta(minutes=duration_min)
-        
-        session_data['start_time'].append(start.strftime('%Y-%m-%d %H:%M:%S'))
-        session_data['end_time'].append(end.strftime('%Y-%m-%d %H:%M:%S'))
-        session_data['duration_minutes'].append(duration_min)
-    
-    df2_duration = pd.DataFrame(session_data).sort_values('start_time').reset_index(drop=True)
-    
-    # FILE 3: Unauthenticated Access
-    unauth_data = {
-        'timestamp': generate_timestamps(500, base_date),
-        'ip_address': [],
-        'auth_status': [],
-        'attempt_count': [],
-        'failure_reason': []
-    }
-    
-    failure_reasons = ['Invalid_Credentials', 'Expired_Token', 'Missing_Auth_Header', 
-                       'Brute_Force_Detected', 'Account_Locked', 'Invalid_OTP']
-    
-    for i in range(500):
-        if random.random() < 0.70:
-            unauth_data['ip_address'].append(random.choice(normal_ips))
-            unauth_data['auth_status'].append('authenticated')
-            unauth_data['attempt_count'].append(1)
-            unauth_data['failure_reason'].append('None')
-        else:
-            unauth_data['ip_address'].append(random.choice(suspicious_ips))
-            unauth_data['auth_status'].append('unauthenticated')
-            unauth_data['attempt_count'].append(random.randint(1, 15))
-            unauth_data['failure_reason'].append(random.choice(failure_reasons))
-    
-    df3_unauth = pd.DataFrame(unauth_data).sort_values('timestamp').reset_index(drop=True)
-    
-    # FILE 4: Request Logs
-    request_data = {
-        'timestamp': generate_timestamps(500, base_date),
-        'ip_address': [],
-        'request_type': [],
-        'payload_size': [],
-        'status_code': []
-    }
-    
-    for i in range(500):
-        rand = random.random()
-        if rand < 0.75:
-            request_data['ip_address'].append(random.choice(normal_ips))
-            request_data['request_type'].append('normal')
-            request_data['payload_size'].append(random.randint(100, 5000))
-            request_data['status_code'].append(np.random.choice([200, 400], p=[0.95, 0.05]))
-        elif rand < 0.90:
-            request_data['ip_address'].append(random.choice(suspicious_ips))
-            request_data['request_type'].append('blank')
-            request_data['payload_size'].append(random.randint(0, 50))
-            request_data['status_code'].append(np.random.choice([400, 403], p=[0.6, 0.4]))
-        else:
-            request_data['ip_address'].append(random.choice(suspicious_ips))
-            request_data['request_type'].append('dos_attack')
-            request_data['payload_size'].append(random.randint(10000, 50000))
-            request_data['status_code'].append(np.random.choice([429, 503], p=[0.7, 0.3]))
-    
-    df4_requests = pd.DataFrame(request_data).sort_values('timestamp').reset_index(drop=True)
-    
-    # FILE 5: Service Subscriptions
-    service_data = {
-        'user_id': [],
-        'service_name': [],
-        'subscription_date': [],
-        'status': [],
-        'plan_type': []
-    }
-    
-    services = ['UPI_Transfer', 'Bill_Payment', 'Mobile_Recharge', 'DTH_Recharge', 
-                'Money_Request', 'QR_Payment', 'Merchant_Payment', 'International_Transfer']
-    plans = ['Basic', 'Premium', 'Gold', 'Enterprise']
-    
-    for i in range(500):
-        if random.random() < 0.85:
-            service_data['user_id'].append(random.choice(user_ids))
-            service_data['status'].append(np.random.choice(['active', 'inactive'], p=[0.9, 0.1]))
-        else:
-            service_data['user_id'].append(random.choice(suspicious_users))
-            service_data['status'].append(np.random.choice(['active', 'inactive', 'suspended', 'pending'], 
-                                                          p=[0.3, 0.2, 0.4, 0.1]))
-        
-        service_data['service_name'].append(random.choice(services))
-        sub_date = base_date - timedelta(days=random.randint(0, 180))
-        service_data['subscription_date'].append(sub_date.strftime('%Y-%m-%d'))
-        service_data['plan_type'].append(random.choice(plans))
-    
-    df5_services = pd.DataFrame(service_data).sort_values('subscription_date').reset_index(drop=True)
-    
-    return df1_login, df2_duration, df3_unauth, df4_requests, df5_services
+@st.cache_data(show_spinner=False)
+def generate_data():
+    np.random.seed(42); random.seed(42)
+    base = datetime(2026, 2, 1)
+    users  = [f"USR{str(i).zfill(4)}" for i in range(1, 301)]
+    sus    = [f"SUS{str(i).zfill(4)}" for i in range(1, 51)]
+    norm_ips = [_ip() for _ in range(200)]
+    sus_ips  = [_ip() for _ in range(30)]
+    browsers = ['Chrome', 'Firefox', 'Safari', 'Edge', 'Mobile App']
+    services = ['UPI Transfer', 'Bill Payment', 'Mobile Recharge', 'DTH Recharge',
+                'Money Request', 'QR Payment', 'Merchant Payment', 'International Transfer']
+    banks    = ['SBI', 'HDFC', 'ICICI', 'Axis', 'Kotak', 'PNB', 'BOB']
+    plans    = ['Basic', 'Premium', 'Gold', 'Enterprise']
+    reasons  = ['Invalid Credentials', 'Expired Token', 'Missing Auth Header',
+                'Brute Force Detected', 'Account Locked', 'Invalid OTP']
 
-# ============================================================================
-# VISUALIZATION FUNCTIONS
-# ============================================================================
+    # Login logs
+    rows = []
+    for _ in range(500):
+        legit = random.random() < 0.85
+        rows.append({
+            'timestamp'    : (_ts(1, base)[0]),
+            'user_id'      : random.choice(users if legit else sus),
+            'ip_address'   : random.choice(norm_ips if legit else sus_ips),
+            'login_status' : np.random.choice(['success','failed'], p=[0.95,0.05] if legit else [0.30,0.70]),
+            'browser'      : random.choice(browsers),
+        })
+    df_login = pd.DataFrame(rows).sort_values('timestamp').reset_index(drop=True)
 
-def create_login_trend_chart(df):
-    """Login success/failure trend over time"""
-    df_copy = df.copy()
-    df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
-    df_copy['hour'] = df_copy['timestamp'].dt.hour
-    
-    trend = df_copy.groupby(['hour', 'login_status']).size().reset_index(name='count')
-    
-    fig = px.line(trend, x='hour', y='count', color='login_status',
-                  title='Login Attempts by Hour',
-                  labels={'hour': 'Hour of Day', 'count': 'Number of Attempts'},
-                  color_discrete_map={'success': '#4caf50', 'failed': '#f44336'})
-    
-    fig.update_layout(hovermode='x unified', height=400)
+    # Session logs
+    rows = []
+    for i in range(500):
+        start = base + timedelta(seconds=random.randint(0, 24*3600))
+        legit = random.random() < 0.80
+        dur   = random.randint(5, 60) if legit else (
+                random.randint(1, 3) if random.random() < .5 else random.randint(180, 480))
+        rows.append({
+            'session_id'       : f"SES{str(i).zfill(5)}",
+            'user_id'          : random.choice(users if legit else sus),
+            'start_time'       : start.strftime('%Y-%m-%d %H:%M:%S'),
+            'end_time'         : (start + timedelta(minutes=dur)).strftime('%Y-%m-%d %H:%M:%S'),
+            'duration_minutes' : dur,
+        })
+    df_session = pd.DataFrame(rows).sort_values('start_time').reset_index(drop=True)
+
+    # Unauth logs
+    rows = []
+    for _ in range(500):
+        legit = random.random() < 0.70
+        rows.append({
+            'timestamp'    : (_ts(1, base)[0]),
+            'ip_address'   : random.choice(norm_ips if legit else sus_ips),
+            'auth_status'  : 'authenticated' if legit else 'unauthenticated',
+            'attempt_count': 1 if legit else random.randint(1, 15),
+            'failure_reason': 'None' if legit else random.choice(reasons),
+        })
+    df_unauth = pd.DataFrame(rows).sort_values('timestamp').reset_index(drop=True)
+
+    # Request logs
+    rows = []
+    for _ in range(500):
+        r = random.random()
+        if r < 0.75:
+            ip, rtype, size, code = random.choice(norm_ips), 'normal', random.randint(100,5000), np.random.choice([200,400],p=[.95,.05])
+        elif r < 0.90:
+            ip, rtype, size, code = random.choice(sus_ips), 'blank', random.randint(0,50), np.random.choice([400,403],p=[.6,.4])
+        else:
+            ip, rtype, size, code = random.choice(sus_ips), 'dos_attack', random.randint(10000,50000), np.random.choice([429,503],p=[.7,.3])
+        rows.append({'timestamp':_ts(1,base)[0], 'ip_address':ip, 'request_type':rtype,
+                     'payload_size':size, 'status_code':code})
+    df_req = pd.DataFrame(rows).sort_values('timestamp').reset_index(drop=True)
+
+    # Service logs
+    rows = []
+    for _ in range(500):
+        legit = random.random() < 0.85
+        rows.append({
+            'user_id'          : random.choice(users if legit else sus),
+            'service_name'     : random.choice(services),
+            'subscription_date': (base - timedelta(days=random.randint(0,180))).strftime('%Y-%m-%d'),
+            'status'           : np.random.choice(['active','inactive'], p=[.9,.1]) if legit else
+                                 np.random.choice(['active','inactive','suspended','pending'], p=[.3,.2,.4,.1]),
+            'plan_type'        : random.choice(plans),
+            'bank'             : random.choice(banks),
+        })
+    df_svc = pd.DataFrame(rows).sort_values('subscription_date').reset_index(drop=True)
+
+    return df_login, df_session, df_unauth, df_req, df_svc
+
+# ── Fraud score ────────────────────────────────────────────────────────────────
+def fraud_score(df_login, df_unauth, df_req):
+    fl = len(df_login[df_login.login_status=='failed']) / len(df_login) * 100
+    ua = len(df_unauth[df_unauth.auth_status=='unauthenticated']) / len(df_unauth) * 100
+    at = len(df_req[df_req.request_type.isin(['blank','dos_attack'])]) / len(df_req) * 100
+    score = fl*.3 + ua*.4 + at*.3
+    if score < 15:   return score, 'LOW',      '#10b981'
+    if score < 30:   return score, 'MEDIUM',   '#f59e0b'
+    if score < 50:   return score, 'HIGH',     '#f97316'
+    return score, 'CRITICAL', '#ef4444'
+
+# ── KPI helper ─────────────────────────────────────────────────────────────────
+def kpi(col, label, value, color):
+    col.markdown(f"""
+    <div class="kpi" style="border-top-color:{color}">
+      <p class="kpi-lbl">{label}</p>
+      <p class="kpi-val" style="color:{color}">{value}</p>
+    </div>""", unsafe_allow_html=True)
+
+# ── Chart helpers ──────────────────────────────────────────────────────────────
+COLORS = {'normal':'#10b981','blank':'#f59e0b','dos_attack':'#ef4444',
+          'success':'#10b981','failed':'#ef4444',
+          'authenticated':'#10b981','unauthenticated':'#ef4444'}
+
+def chart_login_trend(df):
+    df = df.copy(); df['hour'] = pd.to_datetime(df.timestamp).dt.hour
+    g = df.groupby(['hour','login_status']).size().reset_index(name='count')
+    fig = px.line(g, x='hour', y='count', color='login_status',
+                  color_discrete_map=COLORS,
+                  labels={'hour':'Hour','count':'Attempts','login_status':'Status'})
+    fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID, height=320,
+                      legend=dict(orientation='h',y=-0.25))
+    fig.update_traces(line_width=2)
     return fig
 
-def create_session_distribution(df):
-    """Session duration distribution"""
-    fig = px.histogram(df, x='duration_minutes', 
-                      title='Session Duration Distribution',
-                      labels={'duration_minutes': 'Duration (minutes)', 'count': 'Frequency'},
-                      nbins=50,
-                      color_discrete_sequence=['#1f77b4'])
-    
-    # Add vertical lines for thresholds
-    fig.add_vline(x=3, line_dash="dash", line_color="red", 
-                  annotation_text="Suspicious (< 3 min)")
-    fig.add_vline(x=180, line_dash="dash", line_color="orange", 
-                  annotation_text="Suspicious (> 180 min)")
-    
-    fig.update_layout(height=400)
+def chart_session_hist(df):
+    fig = px.histogram(df, x='duration_minutes', nbins=50,
+                       color_discrete_sequence=['#3b82f6'],
+                       labels={'duration_minutes':'Duration (min)'})
+    fig.add_vline(x=3,   line_dash='dash', line_color='#ef4444', annotation_text='< 3 min')
+    fig.add_vline(x=180, line_dash='dash', line_color='#f59e0b', annotation_text='> 180 min')
+    fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID, height=320)
     return fig
 
-def create_auth_pie_chart(df):
-    """Authentication status breakdown"""
-    auth_counts = df['auth_status'].value_counts()
-    
-    fig = px.pie(values=auth_counts.values, names=auth_counts.index,
-                title='Authentication Status Distribution',
-                color_discrete_map={'authenticated': '#4caf50', 'unauthenticated': '#f44336'})
-    
+def chart_auth_pie(df):
+    c = df.auth_status.value_counts()
+    fig = px.pie(values=c.values, names=c.index, hole=0.55,
+                 color=c.index, color_discrete_map=COLORS)
     fig.update_traces(textposition='inside', textinfo='percent+label')
-    fig.update_layout(height=400)
+    fig.update_layout(**CHART_DEFAULTS, height=320,
+                      legend=dict(orientation='h', y=-0.1))
     return fig
 
-def create_request_type_chart(df):
-    """Request type breakdown"""
-    request_counts = df['request_type'].value_counts()
-    
-    colors = {'normal': '#4caf50', 'blank': '#ff9800', 'dos_attack': '#f44336'}
-    
-    fig = px.bar(x=request_counts.index, y=request_counts.values,
-                title='Request Type Distribution',
-                labels={'x': 'Request Type', 'y': 'Count'},
-                color=request_counts.index,
-                color_discrete_map=colors)
-    
-    fig.update_layout(showlegend=False, height=400)
+def chart_request_types(df):
+    c = df.request_type.value_counts()
+    fig = px.bar(x=c.index, y=c.values, color=c.index,
+                 color_discrete_map=COLORS,
+                 labels={'x':'Request Type','y':'Count'})
+    fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID,
+                      height=320, showlegend=False)
     return fig
 
-def create_top_ips_chart(df, top_n=10):
-    """Top attacking IPs"""
-    suspicious_df = df[df['request_type'].isin(['blank', 'dos_attack'])]
-    top_ips = suspicious_df['ip_address'].value_counts().head(top_n)
-    
-    fig = px.bar(x=top_ips.values, y=top_ips.index, orientation='h',
-                title=f'Top {top_n} Attacking IP Addresses',
-                labels={'x': 'Attack Count', 'y': 'IP Address'},
-                color=top_ips.values,
-                color_continuous_scale='Reds')
-    
-    fig.update_layout(height=400, showlegend=False)
+def chart_top_ips(df, n=10):
+    sus = df[df.request_type.isin(['blank','dos_attack'])]
+    top = sus.ip_address.value_counts().head(n)
+    fig = px.bar(x=top.values, y=top.index, orientation='h',
+                 color=top.values, color_continuous_scale='Reds',
+                 labels={'x':'Attack Count','y':'IP Address'})
+    fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID,
+                      height=380, coloraxis_showscale=False)
     return fig
 
-def create_attack_heatmap(df):
-    """Attack pattern heatmap by hour"""
-    df_copy = df.copy()
-    df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
-    df_copy['hour'] = df_copy['timestamp'].dt.hour
-    df_copy['day'] = df_copy['timestamp'].dt.day_name()
-    
-    # Filter only attacks
-    attacks = df_copy[df_copy['request_type'].isin(['blank', 'dos_attack'])]
-    
-    heatmap_data = attacks.groupby(['day', 'hour']).size().reset_index(name='count')
-    heatmap_pivot = heatmap_data.pivot(index='day', columns='hour', values='count').fillna(0)
-    
-    fig = px.imshow(heatmap_pivot,
-                   labels=dict(x="Hour of Day", y="Day of Week", color="Attack Count"),
-                   title="Attack Pattern Heatmap",
-                   color_continuous_scale='Reds',
-                   aspect="auto")
-    
-    fig.update_layout(height=400)
+def chart_attack_heatmap(df):
+    df = df.copy()
+    df['hour'] = pd.to_datetime(df.timestamp).dt.hour
+    df['day']  = pd.to_datetime(df.timestamp).dt.day_name()
+    atk = df[df.request_type.isin(['blank','dos_attack'])]
+    piv = atk.groupby(['day','hour']).size().reset_index(name='count')\
+             .pivot(index='day', columns='hour', values='count').fillna(0)
+    fig = px.imshow(piv, color_continuous_scale='Reds',
+                    labels=dict(x='Hour', y='Day', color='Attacks'),
+                    aspect='auto')
+    fig.update_layout(**CHART_DEFAULTS, height=320)
     return fig
 
-def create_service_chart(df):
-    """Service subscription breakdown"""
-    service_counts = df['service_name'].value_counts()
-    
-    fig = px.bar(x=service_counts.index, y=service_counts.values,
-                title='Service Subscription Distribution',
-                labels={'x': 'Service Name', 'y': 'Count'},
-                color=service_counts.values,
-                color_continuous_scale='Blues')
-    
-    fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False)
-    return fig
-
-def create_fraud_score_gauge(login_df, unauth_df, request_df):
-    """Calculate and display fraud risk score"""
-    
-    # Calculate metrics
-    failed_login_rate = len(login_df[login_df['login_status']=='failed']) / len(login_df) * 100
-    unauth_rate = len(unauth_df[unauth_df['auth_status']=='unauthenticated']) / len(unauth_df) * 100
-    attack_rate = len(request_df[request_df['request_type'].isin(['blank', 'dos_attack'])]) / len(request_df) * 100
-    
-    # Calculate composite fraud score (0-100)
-    fraud_score = (failed_login_rate * 0.3 + unauth_rate * 0.4 + attack_rate * 0.3)
-    
-    # Determine risk level
-    if fraud_score < 15:
-        risk_level = "LOW"
-        color = "green"
-    elif fraud_score < 30:
-        risk_level = "MEDIUM"
-        color = "yellow"
-    elif fraud_score < 50:
-        risk_level = "HIGH"
-        color = "orange"
-    else:
-        risk_level = "CRITICAL"
-        color = "red"
-    
+def chart_fraud_gauge(score, level, color):
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = fraud_score,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': f"Fraud Risk Score<br><span style='font-size:0.8em;color:{color}'>Risk Level: {risk_level}</span>"},
-        delta = {'reference': 20},
-        gauge = {
-            'axis': {'range': [None, 100]},
-            'bar': {'color': color},
-            'steps': [
-                {'range': [0, 15], 'color': "lightgreen"},
-                {'range': [15, 30], 'color': "lightyellow"},
-                {'range': [30, 50], 'color': "orange"},
-                {'range': [50, 100], 'color': "lightcoral"}
+        mode='gauge+number',
+        value=score,
+        number={'suffix':'%', 'font':{'size':42,'color':color,'family':'IBM Plex Mono'}},
+        title={'text':f"Fraud Risk Score<br><span style='font-size:.8em;color:{color}'>{level}</span>",
+               'font':{'size':15,'color':'#94a3b8'}},
+        gauge={
+            'axis':{'range':[0,100],'tickcolor':'#1e2d45','tickfont':{'color':'#64748b'}},
+            'bar':{'color':color,'thickness':0.25},
+            'bgcolor':'#111827',
+            'steps':[
+                {'range':[0,15],  'color':'#0f1f14'},
+                {'range':[15,30], 'color':'#1a1a0f'},
+                {'range':[30,50], 'color':'#1f1200'},
+                {'range':[50,100],'color':'#1f0f0f'},
             ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 50
-            }
+            'threshold':{'line':{'color':color,'width':3},'thickness':0.75,'value':score}
         }
     ))
-    
-    fig.update_layout(height=400)
-    return fig, fraud_score, risk_level
+    fig.update_layout(**CHART_DEFAULTS, height=320)
+    return fig
 
-# ============================================================================
-# MAIN APP
-# ============================================================================
+def chart_service_status(df):
+    c = df.status.value_counts()
+    clrs = {'active':'#10b981','inactive':'#64748b','suspended':'#ef4444','pending':'#f59e0b'}
+    fig = px.pie(values=c.values, names=c.index, hole=0.5,
+                 color=c.index, color_discrete_map=clrs)
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(**CHART_DEFAULTS, height=320,
+                      legend=dict(orientation='h', y=-0.1))
+    return fig
 
+def chart_browser(df):
+    c = df.browser.value_counts()
+    fig = px.bar(x=c.values, y=c.index, orientation='h',
+                 color=c.values, color_continuous_scale='Blues',
+                 labels={'x':'Count','y':'Browser'})
+    fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID,
+                      height=320, coloraxis_showscale=False)
+    return fig
+
+# ── Anomaly detection ──────────────────────────────────────────────────────────
+def detect_anomalies(df_login, df_session, df_unauth, df_req, df_svc):
+    anomalies = []
+
+    # Brute force IPs
+    bf = df_login[df_login.login_status=='failed'].groupby('ip_address').size()
+    bf = bf[bf > 5]
+    if len(bf):
+        anomalies.append({'severity':'CRITICAL','category':'Brute Force',
+                          'description':f'{len(bf)} IPs with >5 failed login attempts',
+                          'count':len(bf)})
+
+    # Suspicious sessions
+    sus_s = df_session[(df_session.duration_minutes < 3) | (df_session.duration_minutes > 180)]
+    if len(sus_s):
+        anomalies.append({'severity':'WARNING','category':'Session Anomaly',
+                          'description':f'{len(sus_s)} sessions with abnormal duration',
+                          'count':len(sus_s)})
+
+    # High attempt counts
+    hi = df_unauth[df_unauth.attempt_count > 10]
+    if len(hi):
+        anomalies.append({'severity':'CRITICAL','category':'Credential Stuffing',
+                          'description':f'{len(hi)} auth attempts with >10 retries',
+                          'count':len(hi)})
+
+    # DOS attacks
+    dos = df_req[df_req.request_type=='dos_attack']
+    if len(dos):
+        anomalies.append({'severity':'CRITICAL','category':'DOS Attack',
+                          'description':f'{len(dos)} DOS attack requests detected',
+                          'count':len(dos)})
+
+    # Suspended services
+    sus_svc = df_svc[df_svc.status=='suspended']
+    if len(sus_svc):
+        anomalies.append({'severity':'WARNING','category':'Suspended Services',
+                          'description':f'{len(sus_svc)} services in suspended state',
+                          'count':len(sus_svc)})
+
+    return anomalies
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MAIN APP
+# ══════════════════════════════════════════════════════════════════════════════
 def main():
-    # Header
-    st.markdown('<p class="main-header">🔒 UPI Log Analyzer Dashboard</p>', unsafe_allow_html=True)
-    st.markdown("### Real-Time Fraud Detection & Analysis System")
-    
-    # Sidebar
+
+    # ── Sidebar ────────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/security-checked.png", width=100)
-        st.title("⚙️ Configuration")
-        
-        # Data Source Selection
-        data_source = st.radio(
-            "Select Data Source:",
-            ["📤 Upload CSV Files", "🔄 Generate Synthetic Data"]
-        )
-        
-        st.markdown("---")
-        
-        # File type selection for upload
-        if data_source == "📤 Upload CSV Files":
-            st.info("Upload your log files below")
-            uploaded_login = st.file_uploader("1️⃣ User Login Logs", type=['csv'], key='login')
-            uploaded_duration = st.file_uploader("2️⃣ Session Duration Logs", type=['csv'], key='duration')
-            uploaded_unauth = st.file_uploader("3️⃣ Unauth Access Logs", type=['csv'], key='unauth')
-            uploaded_request = st.file_uploader("4️⃣ Request Logs", type=['csv'], key='request')
-            uploaded_service = st.file_uploader("5️⃣ Service Subscription Logs", type=['csv'], key='service')
-            
-            analyze_button = st.button("🔍 Analyze Uploaded Data", type="primary")
+        st.markdown("## 🔐 UPI Log Analyzer")
+        st.caption("Security Intelligence Dashboard")
+        st.divider()
+
+        st.markdown("**Data Source**")
+        source = st.radio("", ["Generate Synthetic Data", "Upload CSV Files"],
+                          label_visibility='collapsed')
+
+        if source == "Upload CSV Files":
+            st.markdown("**Upload Log Files**")
+            up_login   = st.file_uploader("Login Logs",   type='csv', key='l')
+            up_session = st.file_uploader("Session Logs", type='csv', key='s')
+            up_unauth  = st.file_uploader("Unauth Logs",  type='csv', key='u')
+            up_req     = st.file_uploader("Request Logs", type='csv', key='r')
+            up_svc     = st.file_uploader("Service Logs", type='csv', key='sv')
+            btn = st.button("Analyze", type="primary", use_container_width=True)
         else:
-            st.info("Click below to generate synthetic data")
-            analyze_button = st.button("🔄 Generate & Analyze", type="primary")
-        
-        st.markdown("---")
-        st.markdown("### 📊 Features")
+            btn = st.button("Generate & Analyze", type="primary", use_container_width=True)
+
+        st.divider()
         st.markdown("""
-        - Fraud Risk Scoring
-        - Interactive Visualizations
-        - Pandas Profiling Reports
-        - Data Export Options
-        - Anomaly Detection
-        """)
-    
-    # Main Content
-    if analyze_button:
-        with st.spinner("Processing data..."):
-            
-            # Load or generate data
-            if data_source == "📤 Upload CSV Files":
-                if all([uploaded_login, uploaded_duration, uploaded_unauth, uploaded_request, uploaded_service]):
-                    df1_login = pd.read_csv(uploaded_login)
-                    df2_duration = pd.read_csv(uploaded_duration)
-                    df3_unauth = pd.read_csv(uploaded_unauth)
-                    df4_requests = pd.read_csv(uploaded_request)
-                    df5_services = pd.read_csv(uploaded_service)
-                    st.success("✅ All files uploaded successfully!")
-                else:
-                    st.error("❌ Please upload all 5 CSV files to proceed!")
-                    return
-            else:
-                df1_login, df2_duration, df3_unauth, df4_requests, df5_services = generate_synthetic_data()
-                st.success("✅ Synthetic data generated successfully!")
-            
-            # Store in session state
-            st.session_state['df1_login'] = df1_login
-            st.session_state['df2_duration'] = df2_duration
-            st.session_state['df3_unauth'] = df3_unauth
-            st.session_state['df4_requests'] = df4_requests
-            st.session_state['df5_services'] = df5_services
-            st.session_state['data_loaded'] = True
-    
-    # Display dashboard if data is loaded
-    if st.session_state.get('data_loaded', False):
-        
-        df1_login = st.session_state['df1_login']
-        df2_duration = st.session_state['df2_duration']
-        df3_unauth = st.session_state['df3_unauth']
-        df4_requests = st.session_state['df4_requests']
-        df5_services = st.session_state['df5_services']
-        
-        # Tabs for different sections
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📊 Dashboard Overview", 
-            "📈 Detailed Analysis", 
-            "🔍 Pandas Profiling",
-            "📥 Data Export",
-            "⚠️ Anomaly Detection"
+        <div style="font-size:.78rem;color:#64748b;line-height:1.8">
+        Analyzes 5 log types:<br>
+        · Login attempts<br>
+        · Session durations<br>
+        · Auth failures<br>
+        · Request patterns<br>
+        · Service subscriptions
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Load data ──────────────────────────────────────────────────────────────
+    if btn:
+        if source == "Upload CSV Files":
+            if not all([up_login, up_session, up_unauth, up_req, up_svc]):
+                st.error("Please upload all 5 CSV files.")
+                return
+            df_l = pd.read_csv(up_login);   df_s = pd.read_csv(up_session)
+            df_u = pd.read_csv(up_unauth);  df_r = pd.read_csv(up_req)
+            df_v = pd.read_csv(up_svc)
+        else:
+            with st.spinner("Generating data..."):
+                df_l, df_s, df_u, df_r, df_v = generate_data()
+
+        st.session_state.update({
+            'df_l':df_l,'df_s':df_s,'df_u':df_u,'df_r':df_r,'df_v':df_v,'loaded':True
+        })
+
+    # ── Dashboard ──────────────────────────────────────────────────────────────
+    if not st.session_state.get('loaded', False):
+        st.markdown("## UPI Log Analyzer")
+        st.markdown("Select a data source in the sidebar and click **Generate & Analyze** to begin.")
+        return
+
+    df_l = st.session_state.df_l; df_s = st.session_state.df_s
+    df_u = st.session_state.df_u; df_r = st.session_state.df_r
+    df_v = st.session_state.df_v
+
+    score, level, color = fraud_score(df_l, df_u, df_r)
+    anomalies = detect_anomalies(df_l, df_s, df_u, df_r, df_v)
+
+    # Page title
+    st.markdown("## UPI Log Analyzer")
+    st.caption(f"Analysis run · {datetime.now().strftime('%d %b %Y, %H:%M')}")
+    st.divider()
+
+    # ── Tabs ───────────────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Deep Dive", "Anomalies", "Export"])
+
+    # ══ TAB 1: Overview ══
+    with tab1:
+
+        # Fraud gauge + top KPIs
+        g_col, k_col = st.columns([1.4, 1])
+
+        with g_col:
+            st.plotly_chart(chart_fraud_gauge(score, level, color), use_container_width=True)
+
+        with k_col:
+            st.write("")
+            k1, k2 = st.columns(2)
+            kpi(k1, "Total Logins",      f"{len(df_l):,}",  "#3b82f6")
+            kpi(k2, "Failed Logins",     f"{len(df_l[df_l.login_status=='failed']):,}", "#ef4444")
+            k3, k4 = st.columns(2)
+            kpi(k3, "DOS Attacks",       f"{len(df_r[df_r.request_type=='dos_attack']):,}", "#ef4444")
+            kpi(k4, "Unauth Attempts",   f"{len(df_u[df_u.auth_status=='unauthenticated']):,}", "#f59e0b")
+            k5, k6 = st.columns(2)
+            kpi(k5, "Unique Users",      f"{df_l.user_id.nunique():,}", "#10b981")
+            kpi(k6, "Anomalies Found",   f"{len(anomalies)}", color)
+
+        st.divider()
+
+        # Quick anomaly summary
+        if anomalies:
+            st.markdown('<p class="sec-title">Active Alerts</p>', unsafe_allow_html=True)
+            for a in anomalies:
+                badge_cls = 'badge-red' if a['severity']=='CRITICAL' else 'badge-yellow'
+                st.markdown(f"""
+                <div class="anomaly-item">
+                    <span style="color:#e2e8f0">{a['category']} — {a['description']}</span>
+                    <span class="badge {badge_cls}">{a['severity']}</span>
+                </div>""", unsafe_allow_html=True)
+            st.write("")
+
+        st.divider()
+
+        # 4 charts
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<p class="sec-title">Login Attempts by Hour</p>', unsafe_allow_html=True)
+            st.plotly_chart(chart_login_trend(df_l), use_container_width=True)
+
+            st.markdown('<p class="sec-title">Request Type Distribution</p>', unsafe_allow_html=True)
+            st.plotly_chart(chart_request_types(df_r), use_container_width=True)
+
+        with c2:
+            st.markdown('<p class="sec-title">Auth Status Breakdown</p>', unsafe_allow_html=True)
+            st.plotly_chart(chart_auth_pie(df_u), use_container_width=True)
+
+            st.markdown('<p class="sec-title">Session Duration Distribution</p>', unsafe_allow_html=True)
+            st.plotly_chart(chart_session_hist(df_s), use_container_width=True)
+
+    # ══ TAB 2: Deep Dive ══
+    with tab2:
+        section = st.selectbox("Select Analysis", [
+            "Login Analysis", "Session Analysis",
+            "Attack Analysis", "Service Analysis"
         ])
-        
-        # ===== TAB 1: Dashboard Overview =====
-        with tab1:
-            st.header("📊 Executive Dashboard")
-            
-            # Fraud Risk Score
-            col1, col2, col3 = st.columns([2, 1, 1])
-            
-            with col1:
-                fraud_fig, fraud_score, risk_level = create_fraud_score_gauge(df1_login, df3_unauth, df4_requests)
-                st.plotly_chart(fraud_fig, use_container_width=True)
-            
-            with col2:
-                st.metric("Total Login Attempts", len(df1_login))
-                st.metric("Failed Logins", len(df1_login[df1_login['login_status']=='failed']))
-                st.metric("Unique Users", df1_login['user_id'].nunique())
-            
-            with col3:
-                st.metric("DOS Attacks", len(df4_requests[df4_requests['request_type']=='dos_attack']))
-                st.metric("Blank Requests", len(df4_requests[df4_requests['request_type']=='blank']))
-                st.metric("Unauth Attempts", len(df3_unauth[df3_unauth['auth_status']=='unauthenticated']))
-            
-            st.markdown("---")
-            
-            # Key Metrics Cards
-            st.subheader("🎯 Key Security Metrics")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                failed_rate = len(df1_login[df1_login['login_status']=='failed']) / len(df1_login) * 100
+
+        st.divider()
+
+        if section == "Login Analysis":
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<p class="sec-title">Login Trend</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_login_trend(df_l), use_container_width=True)
+            with c2:
+                st.markdown('<p class="sec-title">Browser Distribution</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_browser(df_l), use_container_width=True)
+
+            st.markdown('<p class="sec-title">Recent Failed Logins</p>', unsafe_allow_html=True)
+            failed = df_l[df_l.login_status=='failed'].tail(15)
+            st.dataframe(failed, use_container_width=True, height=320)
+
+        elif section == "Session Analysis":
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<p class="sec-title">Session Duration Histogram</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_session_hist(df_s), use_container_width=True)
+            with c2:
+                st.markdown('<p class="sec-title">Session Stats</p>', unsafe_allow_html=True)
+                short = len(df_s[df_s.duration_minutes < 3])
+                long_ = len(df_s[df_s.duration_minutes > 180])
+                sus_s = short + long_
+                st.metric("Suspicious Sessions", sus_s)
+                st.metric("Very Short  (< 3 min)",  short)
+                st.metric("Very Long  (> 180 min)", long_)
+                st.metric("Avg Duration", f"{df_s.duration_minutes.mean():.1f} min")
+
+            st.markdown('<p class="sec-title">Suspicious Sessions</p>', unsafe_allow_html=True)
+            sus_df = df_s[(df_s.duration_minutes < 3) | (df_s.duration_minutes > 180)]
+            st.dataframe(sus_df.head(20), use_container_width=True, height=320)
+
+        elif section == "Attack Analysis":
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<p class="sec-title">Request Types</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_request_types(df_r), use_container_width=True)
+            with c2:
+                st.markdown('<p class="sec-title">Top Attacking IPs</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_top_ips(df_r), use_container_width=True)
+
+            st.markdown('<p class="sec-title">Attack Heatmap — Hour × Day</p>', unsafe_allow_html=True)
+            st.plotly_chart(chart_attack_heatmap(df_r), use_container_width=True)
+
+            st.markdown('<p class="sec-title">Recent Attack Logs</p>', unsafe_allow_html=True)
+            atk = df_r[df_r.request_type.isin(['blank','dos_attack'])].tail(15)
+            st.dataframe(atk, use_container_width=True, height=320)
+
+        elif section == "Service Analysis":
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<p class="sec-title">Service Status</p>', unsafe_allow_html=True)
+                st.plotly_chart(chart_service_status(df_v), use_container_width=True)
+            with c2:
+                st.markdown('<p class="sec-title">Service Counts</p>', unsafe_allow_html=True)
+                c = df_v.service_name.value_counts()
+                fig = px.bar(x=c.values, y=c.index, orientation='h',
+                             color=c.values, color_continuous_scale='Blues',
+                             labels={'x':'Count','y':'Service'})
+                fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID,
+                                  height=320, coloraxis_showscale=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown('<p class="sec-title">Suspended / Inactive Services</p>', unsafe_allow_html=True)
+            bad = df_v[df_v.status.isin(['suspended','inactive'])]
+            st.dataframe(bad.head(20), use_container_width=True, height=320)
+
+    # ══ TAB 3: Anomalies ══
+    with tab3:
+        st.markdown('<p class="sec-title">Detected Anomalies</p>', unsafe_allow_html=True)
+
+        if not anomalies:
+            st.success("No anomalies detected.")
+        else:
+            for a in anomalies:
+                badge_cls = 'badge-red' if a['severity']=='CRITICAL' else 'badge-yellow'
                 st.markdown(f"""
-                <div class="{'alert-critical' if failed_rate > 10 else 'alert-success'}">
-                    <h4>Login Failure Rate</h4>
-                    <h2>{failed_rate:.1f}%</h2>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                avg_duration = df2_duration['duration_minutes'].mean()
-                st.markdown(f"""
-                <div class="alert-success">
-                    <h4>Avg Session Duration</h4>
-                    <h2>{avg_duration:.1f} min</h2>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                unauth_rate = len(df3_unauth[df3_unauth['auth_status']=='unauthenticated']) / len(df3_unauth) * 100
-                st.markdown(f"""
-                <div class="{'alert-critical' if unauth_rate > 30 else 'alert-warning'}">
-                    <h4>Unauth Rate</h4>
-                    <h2>{unauth_rate:.1f}%</h2>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                attack_count = len(df4_requests[df4_requests['request_type'].isin(['blank', 'dos_attack'])])
-                st.markdown(f"""
-                <div class="{'alert-critical' if attack_count > 100 else 'alert-warning'}">
-                    <h4>Total Attacks</h4>
-                    <h2>{attack_count}</h2>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown("---")
-            
-            # Quick Visualizations
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.plotly_chart(create_login_trend_chart(df1_login), use_container_width=True)
-                st.plotly_chart(create_auth_pie_chart(df3_unauth), use_container_width=True)
-            
-            with col2:
-                st.plotly_chart(create_request_type_chart(df4_requests), use_container_width=True)
-                st.plotly_chart(create_session_distribution(df2_duration), use_container_width=True)
-        
-        # ===== TAB 2: Detailed Analysis =====
-        with tab2:
-            st.header("📈 Detailed Analysis & Visualizations")
-            
-            analysis_type = st.selectbox(
-                "Select Analysis Type:",
-                ["Login Analysis", "Session Analysis", "Authentication Analysis", 
-                 "Attack Analysis", "Service Analysis"]
-            )
-            
-            if analysis_type == "Login Analysis":
-                st.subheader("🔐 Login Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(create_login_trend_chart(df1_login), use_container_width=True)
-                
-                with col2:
-                    # Browser distribution
-                    browser_counts = df1_login['browser'].value_counts()
-                    fig = px.pie(values=browser_counts.values, names=browser_counts.index,
-                                title='Browser Distribution')
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                st.subheader("📋 Recent Failed Logins")
-                failed_logins = df1_login[df1_login['login_status']=='failed'].tail(10)
-                st.dataframe(failed_logins, use_container_width=True)
-            
-            elif analysis_type == "Session Analysis":
-                st.subheader("⏱️ Session Duration Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(create_session_distribution(df2_duration), use_container_width=True)
-                
-                with col2:
-                    # Suspicious sessions
-                    suspicious = df2_duration[
-                        (df2_duration['duration_minutes'] < 3) | 
-                        (df2_duration['duration_minutes'] > 180)
-                    ]
-                    
-                    st.metric("Suspicious Sessions", len(suspicious))
-                    st.metric("Very Short (<3 min)", len(df2_duration[df2_duration['duration_minutes'] < 3]))
-                    st.metric("Very Long (>180 min)", len(df2_duration[df2_duration['duration_minutes'] > 180]))
-                
-                st.subheader("⚠️ Suspicious Sessions")
-                st.dataframe(suspicious.head(10), use_container_width=True)
-            
-            elif analysis_type == "Authentication Analysis":
-                st.subheader("🔓 Authentication Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(create_auth_pie_chart(df3_unauth), use_container_width=True)
-                
-                with col2:
-                    # Failure reasons
-                    failure_df = df3_unauth[df3_unauth['auth_status']=='unauthenticated']
-                    reason_counts = failure_df['failure_reason'].value_counts()
-                    
-                    fig = px.bar(x=reason_counts.index, y=reason_counts.values,
-                                title='Authentication Failure Reasons',
-                                labels={'x': 'Reason', 'y': 'Count'})
-                    fig.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                st.subheader("🚨 High-Risk IPs (Multiple Failed Attempts)")
-                high_risk = df3_unauth[df3_unauth['attempt_count'] > 5].sort_values('attempt_count', ascending=False)
-                st.dataframe(high_risk.head(10), use_container_width=True)
-            
-            elif analysis_type == "Attack Analysis":
-                st.subheader("⚔️ Attack Pattern Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(create_request_type_chart(df4_requests), use_container_width=True)
-                
-                with col2:
-                    st.plotly_chart(create_top_ips_chart(df4_requests, 10), use_container_width=True)
-                
-                st.plotly_chart(create_attack_heatmap(df4_requests), use_container_width=True)
-                
-                st.subheader("🎯 Recent Attack Logs")
-                attacks = df4_requests[df4_requests['request_type'].isin(['blank', 'dos_attack'])].tail(10)
-                st.dataframe(attacks, use_container_width=True)
-            
-            elif analysis_type == "Service Analysis":
-                st.subheader("💳 Service Subscription Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(create_service_chart(df5_services), use_container_width=True)
-                
-                with col2:
-                    # Status distribution
-                    status_counts = df5_services['status'].value_counts()
-                    fig = px.pie(values=status_counts.values, names=status_counts.index,
-                                title='Subscription Status Distribution')
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                st.subheader("🔴 Suspended/Inactive Services")
-                suspended = df5_services[df5_services['status'].isin(['suspended', 'inactive'])]
-                st.dataframe(suspended.head(10), use_container_width=True)
-        
-        # ===== TAB 3: Pandas Profiling =====
-        with tab3:
-            st.header("🔍 Pandas Profiling Reports")
-            st.info("Generate comprehensive HTML reports for each dataset")
-            
-            report_type = st.selectbox(
-                "Select Report to Generate:",
-                ["User Login Logs", "Session Duration Logs", "Unauth Access Logs", 
-                 "Request Logs", "Service Subscription Logs"]
-            )
-            
-            if st.button("📊 Generate Pandas Profile Report"):
-                with st.spinner(f"Generating profile report for {report_type}..."):
-                    
-                    # Select appropriate dataframe
-                    if report_type == "User Login Logs":
-                        df_selected = df1_login
-                        title = "User Login Analysis Report"
-                    elif report_type == "Session Duration Logs":
-                        df_selected = df2_duration
-                        title = "Session Duration Analysis Report"
-                    elif report_type == "Unauth Access Logs":
-                        df_selected = df3_unauth
-                        title = "Unauthenticated Access Analysis Report"
-                    elif report_type == "Request Logs":
-                        df_selected = df4_requests
-                        title = "Request & DOS Attack Analysis Report"
-                    else:
-                        df_selected = df5_services
-                        title = "Service Subscription Analysis Report"
-                    
-                    # Generate profile
-                    profile = ProfileReport(df_selected, title=title, explorative=True)
-                    
-                    # Export to HTML
-                    profile_html = profile.to_html()
-                    
-                    # Display in iframe
-                    st.success("✅ Report generated successfully!")
-                    components.html(profile_html, height=800, scrolling=True)
-                    
-                    # Download button
-                    st.download_button(
-                        label="📥 Download HTML Report",
-                        data=profile_html,
-                        file_name=f"{report_type.lower().replace(' ', '_')}_profile.html",
-                        mime="text/html"
-                    )
-        
-        # ===== TAB 4: Data Export =====
-        with tab4:
-            st.header("📥 Data Export Options")
-            
-            st.subheader("Download Generated CSV Files")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.download_button(
-                    "📄 Download Login Logs CSV",
-                    df1_login.to_csv(index=False),
-                    "user_login_logs.csv",
-                    "text/csv"
-                )
-                
-                st.download_button(
-                    "📄 Download Session Logs CSV",
-                    df2_duration.to_csv(index=False),
-                    "session_duration_logs.csv",
-                    "text/csv"
-                )
-                
-                st.download_button(
-                    "📄 Download Unauth Logs CSV",
-                    df3_unauth.to_csv(index=False),
-                    "unauth_access_logs.csv",
-                    "text/csv"
-                )
-            
-            with col2:
-                st.download_button(
-                    "📄 Download Request Logs CSV",
-                    df4_requests.to_csv(index=False),
-                    "request_logs.csv",
-                    "text/csv"
-                )
-                
-                st.download_button(
-                    "📄 Download Service Logs CSV",
-                    df5_services.to_csv(index=False),
-                    "service_subscription_logs.csv",
-                    "text/csv"
-                )
-            
-            st.markdown("---")
-            
-            st.subheader("📊 Export Summary Report")
-            
-            if st.button("Generate Summary Report"):
-                summary = f"""
-UPI LOG ANALYZER - SUMMARY REPORT
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-{'='*60}
+                <div class="anomaly-item">
+                    <div>
+                        <div style="color:#e2e8f0;font-weight:600">{a['category']}</div>
+                        <div style="color:#64748b;font-size:.85rem">{a['description']}</div>
+                    </div>
+                    <span class="badge {badge_cls}">{a['severity']}</span>
+                </div>""", unsafe_allow_html=True)
 
-1. LOGIN ANALYSIS:
-   - Total Logins: {len(df1_login)}
-   - Successful: {len(df1_login[df1_login['login_status']=='success'])}
-   - Failed: {len(df1_login[df1_login['login_status']=='failed'])}
-   - Unique Users: {df1_login['user_id'].nunique()}
+        st.divider()
 
-2. SESSION ANALYSIS:
-   - Total Sessions: {len(df2_duration)}
-   - Average Duration: {df2_duration['duration_minutes'].mean():.2f} minutes
-   - Suspicious Short (<3 min): {len(df2_duration[df2_duration['duration_minutes']<3])}
-   - Suspicious Long (>180 min): {len(df2_duration[df2_duration['duration_minutes']>180])}
+        # Anomaly drill-downs
+        with st.expander("Brute Force — IPs with >5 failed logins"):
+            bf = df_l[df_l.login_status=='failed'].groupby('ip_address').size()
+            bf = bf[bf > 5].sort_values(ascending=False).reset_index()
+            bf.columns = ['IP Address', 'Failed Attempts']
+            st.dataframe(bf, use_container_width=True)
 
-3. AUTHENTICATION ANALYSIS:
-   - Total Attempts: {len(df3_unauth)}
-   - Authenticated: {len(df3_unauth[df3_unauth['auth_status']=='authenticated'])}
-   - Unauthenticated: {len(df3_unauth[df3_unauth['auth_status']=='unauthenticated'])}
+        with st.expander("Suspicious Sessions — abnormal durations"):
+            sus = df_s[(df_s.duration_minutes < 3) | (df_s.duration_minutes > 180)]
+            st.dataframe(sus, use_container_width=True)
 
-4. ATTACK ANALYSIS:
-   - Total Requests: {len(df4_requests)}
-   - Normal: {len(df4_requests[df4_requests['request_type']=='normal'])}
-   - Blank Requests: {len(df4_requests[df4_requests['request_type']=='blank'])}
-   - DOS Attacks: {len(df4_requests[df4_requests['request_type']=='dos_attack'])}
+        with st.expander("High-Retry Auth Attempts — >10 retries"):
+            hi = df_u[df_u.attempt_count > 10].sort_values('attempt_count', ascending=False)
+            st.dataframe(hi, use_container_width=True)
 
-5. SERVICE ANALYSIS:
-   - Total Subscriptions: {len(df5_services)}
-   - Active: {len(df5_services[df5_services['status']=='active'])}
-   - Suspended: {len(df5_services[df5_services['status']=='suspended'])}
+        with st.expander("DOS Attack Logs"):
+            dos = df_r[df_r.request_type=='dos_attack']
+            st.dataframe(dos, use_container_width=True)
 
-FRAUD RISK SCORE: {fraud_score:.2f}/100
-RISK LEVEL: {risk_level}
-{'='*60}
-                """
-                
-                st.text_area("Summary Report", summary, height=400)
-                
-                st.download_button(
-                    "📥 Download Summary Report",
-                    summary,
-                    "summary_report.txt",
-                    "text/plain"
-                )
-        
-        # ===== TAB 5: Anomaly Detection =====
-        with tab5:
-            st.header("⚠️ Anomaly Detection")
-            
-            st.subheader("🚨 Detected Anomalies")
-            
-            # Failed Login Anomalies
-            with st.expander("🔴 Critical: Failed Login Patterns"):
-                failed_by_ip = df1_login[df1_login['login_status']=='failed'].groupby('ip_address').size()
-                critical_ips = failed_by_ip[failed_by_ip > 5].sort_values(ascending=False)
-                
-                if len(critical_ips) > 0:
-                    st.warning(f"Found {len(critical_ips)} IPs with >5 failed login attempts")
-                    st.dataframe(critical_ips.reset_index().rename(columns={0: 'Failed Attempts'}))
-                else:
-                    st.success("No critical failed login patterns detected")
-            
-            # Session Duration Anomalies
-            with st.expander("🟡 Warning: Suspicious Session Durations"):
-                suspicious_sessions = df2_duration[
-                    (df2_duration['duration_minutes'] < 3) | 
-                    (df2_duration['duration_minutes'] > 180)
-                ]
-                
-                if len(suspicious_sessions) > 0:
-                    st.warning(f"Found {len(suspicious_sessions)} suspicious sessions")
-                    st.dataframe(suspicious_sessions.head(10))
-                else:
-                    st.success("No suspicious session durations detected")
-            
-            # Brute Force Detection
-            with st.expander("🔴 Critical: Brute Force Attempts"):
-                brute_force = df3_unauth[
-                    (df3_unauth['auth_status']=='unauthenticated') & 
-                    (df3_unauth['attempt_count'] > 10)
-                ]
-                
-                if len(brute_force) > 0:
-                    st.error(f"⚠️ Detected {len(brute_force)} potential brute force attacks!")
-                    st.dataframe(brute_force)
-                else:
-                    st.success("No brute force patterns detected")
-            
-            # DOS Attack Alerts
-            with st.expander("🔴 Critical: DOS Attack Patterns"):
-                dos_attacks = df4_requests[df4_requests['request_type']=='dos_attack']
-                
-                if len(dos_attacks) > 0:
-                    st.error(f"⚠️ Detected {len(dos_attacks)} DOS attacks!")
-                    
-                    dos_by_ip = dos_attacks.groupby('ip_address').size().sort_values(ascending=False).head(10)
-                    st.dataframe(dos_by_ip.reset_index().rename(columns={0: 'Attack Count'}))
-                else:
-                    st.success("No DOS attacks detected")
-            
-            # Suspended Services
-            with st.expander("🟡 Warning: Suspended Services"):
-                suspended_services = df5_services[df5_services['status']=='suspended']
-                
-                if len(suspended_services) > 0:
-                    st.warning(f"Found {len(suspended_services)} suspended services")
-                    st.dataframe(suspended_services.head(10))
-                else:
-                    st.success("No suspended services found")
-    
-    else:
-        # Welcome Screen
-        st.info("👈 Please select a data source from the sidebar and click the analysis button to begin")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("""
-            ### 📊 Dashboard Features
-            - Real-time fraud scoring
-            - Interactive visualizations
-            - Comprehensive metrics
-            """)
-        
-        with col2:
-            st.markdown("""
-            ### 🔍 Analysis Tools
-            - Pandas profiling reports
-            - Anomaly detection
-            - Pattern recognition
-            """)
-        
-        with col3:
-            st.markdown("""
-            ### 📥 Export Options
-            - Download CSV files
-            - Generate reports
-            - Summary statistics
-            """)
+        with st.expander("Suspended Services"):
+            sus_svc = df_v[df_v.status=='suspended']
+            st.dataframe(sus_svc, use_container_width=True)
+
+    # ══ TAB 4: Export ══
+    with tab4:
+        st.markdown('<p class="sec-title">Download CSV Files</p>', unsafe_allow_html=True)
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.download_button("Login Logs",   df_l.to_csv(index=False), "login_logs.csv",   "text/csv", use_container_width=True)
+            st.download_button("Session Logs", df_s.to_csv(index=False), "session_logs.csv", "text/csv", use_container_width=True)
+        with c2:
+            st.download_button("Unauth Logs",  df_u.to_csv(index=False), "unauth_logs.csv",  "text/csv", use_container_width=True)
+            st.download_button("Request Logs", df_r.to_csv(index=False), "request_logs.csv", "text/csv", use_container_width=True)
+        with c3:
+            st.download_button("Service Logs", df_v.to_csv(index=False), "service_logs.csv", "text/csv", use_container_width=True)
+
+        st.divider()
+        st.markdown('<p class="sec-title">Summary Report</p>', unsafe_allow_html=True)
+
+        if st.button("Generate Text Report", use_container_width=True):
+            report = f"""UPI LOG ANALYZER — SUMMARY REPORT
+Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{'─'*60}
+
+FRAUD RISK SCORE : {score:.1f} / 100   [{level}]
+
+LOGIN ANALYSIS
+  Total attempts     : {len(df_l):,}
+  Successful         : {len(df_l[df_l.login_status=='success']):,}
+  Failed             : {len(df_l[df_l.login_status=='failed']):,}
+  Unique users       : {df_l.user_id.nunique():,}
+  Failure rate       : {len(df_l[df_l.login_status=='failed'])/len(df_l)*100:.1f}%
+
+SESSION ANALYSIS
+  Total sessions     : {len(df_s):,}
+  Avg duration       : {df_s.duration_minutes.mean():.1f} min
+  Short sessions     : {len(df_s[df_s.duration_minutes<3]):,}
+  Long sessions      : {len(df_s[df_s.duration_minutes>180]):,}
+
+AUTH ANALYSIS
+  Total attempts     : {len(df_u):,}
+  Authenticated      : {len(df_u[df_u.auth_status=='authenticated']):,}
+  Unauthenticated    : {len(df_u[df_u.auth_status=='unauthenticated']):,}
+
+ATTACK ANALYSIS
+  Total requests     : {len(df_r):,}
+  Normal             : {len(df_r[df_r.request_type=='normal']):,}
+  Blank requests     : {len(df_r[df_r.request_type=='blank']):,}
+  DOS attacks        : {len(df_r[df_r.request_type=='dos_attack']):,}
+
+SERVICE ANALYSIS
+  Total services     : {len(df_v):,}
+  Active             : {len(df_v[df_v.status=='active']):,}
+  Suspended          : {len(df_v[df_v.status=='suspended']):,}
+  Inactive           : {len(df_v[df_v.status=='inactive']):,}
+
+ANOMALIES DETECTED : {len(anomalies)}
+{'─'*60}
+"""
+            st.text_area("", report, height=420)
+            st.download_button("Download Report", report, "summary_report.txt", "text/plain",
+                               use_container_width=True)
 
 if __name__ == "__main__":
     main()
