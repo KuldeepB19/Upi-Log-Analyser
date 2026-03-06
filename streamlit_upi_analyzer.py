@@ -458,7 +458,7 @@ def main():
         g_col, k_col = st.columns([1.4, 1])
 
         with g_col:
-            st.plotly_chart(chart_fraud_gauge(score, level, color), use_container_width=True)
+            st.plotly_chart(chart_fraud_gauge(score, level, color), use_container_width=True, key="gauge")
 
         with k_col:
             st.write("")
@@ -495,14 +495,14 @@ def main():
             st.plotly_chart(chart_login_trend(df_l), use_container_width=True)
 
             st.markdown('<p class="sec-title">Request Type Distribution</p>', unsafe_allow_html=True)
-            st.plotly_chart(chart_request_types(df_r), use_container_width=True)
+            st.plotly_chart(chart_request_types(df_r), use_container_width=True, key="ov_req")
 
         with c2:
             st.markdown('<p class="sec-title">Auth Status Breakdown</p>', unsafe_allow_html=True)
-            st.plotly_chart(chart_auth_pie(df_u), use_container_width=True)
+            st.plotly_chart(chart_auth_pie(df_u), use_container_width=True, key="ov_auth")
 
             st.markdown('<p class="sec-title">Session Duration Distribution</p>', unsafe_allow_html=True)
-            st.plotly_chart(chart_session_hist(df_s), use_container_width=True)
+            st.plotly_chart(chart_session_hist(df_s), use_container_width=True, key="ov_sess")
 
     # ══ TAB 2: Deep Dive ══
     with tab2:
@@ -517,10 +517,10 @@ def main():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown('<p class="sec-title">Login Trend</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_login_trend(df_l), use_container_width=True)
+                st.plotly_chart(chart_login_trend(df_l), use_container_width=True, key="dd_login")
             with c2:
                 st.markdown('<p class="sec-title">Browser Distribution</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_browser(df_l), use_container_width=True)
+                st.plotly_chart(chart_browser(df_l), use_container_width=True, key="dd_browser")
 
             st.markdown('<p class="sec-title">Recent Failed Logins</p>', unsafe_allow_html=True)
             failed = df_l[df_l.login_status=='failed'].tail(15)
@@ -530,7 +530,7 @@ def main():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown('<p class="sec-title">Session Duration Histogram</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_session_hist(df_s), use_container_width=True)
+                st.plotly_chart(chart_session_hist(df_s), use_container_width=True, key="dd_sess")
             with c2:
                 st.markdown('<p class="sec-title">Session Stats</p>', unsafe_allow_html=True)
                 short = len(df_s[df_s.duration_minutes < 3])
@@ -549,13 +549,13 @@ def main():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown('<p class="sec-title">Request Types</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_request_types(df_r), use_container_width=True)
+                st.plotly_chart(chart_request_types(df_r), use_container_width=True, key="dd_req")
             with c2:
                 st.markdown('<p class="sec-title">Top Attacking IPs</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_top_ips(df_r), use_container_width=True)
+                st.plotly_chart(chart_top_ips(df_r), use_container_width=True, key="dd_ips")
 
             st.markdown('<p class="sec-title">Attack Heatmap — Hour × Day</p>', unsafe_allow_html=True)
-            st.plotly_chart(chart_attack_heatmap(df_r), use_container_width=True)
+            st.plotly_chart(chart_attack_heatmap(df_r), use_container_width=True, key="dd_heatmap")
 
             st.markdown('<p class="sec-title">Recent Attack Logs</p>', unsafe_allow_html=True)
             atk = df_r[df_r.request_type.isin(['blank','dos_attack'])].tail(15)
@@ -565,7 +565,7 @@ def main():
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown('<p class="sec-title">Service Status</p>', unsafe_allow_html=True)
-                st.plotly_chart(chart_service_status(df_v), use_container_width=True)
+                st.plotly_chart(chart_service_status(df_v), use_container_width=True, key="dd_svc")
             with c2:
                 st.markdown('<p class="sec-title">Service Counts</p>', unsafe_allow_html=True)
                 c = df_v.service_name.value_counts()
@@ -574,7 +574,7 @@ def main():
                              labels={'x':'Count','y':'Service'})
                 fig.update_layout(**CHART_DEFAULTS, xaxis=GRID, yaxis=GRID,
                                   height=320, coloraxis_showscale=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="dd_svc_bar")
 
             st.markdown('<p class="sec-title">Suspended / Inactive Services</p>', unsafe_allow_html=True)
             bad = df_v[df_v.status.isin(['suspended','inactive'])]
